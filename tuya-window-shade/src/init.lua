@@ -1,18 +1,3 @@
--- Tuya Window Shade ver 0.6.1
--- Copyright 2021-2025 Jaewon Park (iquix) / SmartThings
---
--- Licensed under the Apache License, Version 2.0 (the "License");
--- you may not use this file except in compliance with the License.
--- You may obtain a copy of the License at
---
---     http://www.apache.org/licenses/LICENSE-2.0
---
--- Unless required by applicable law or agreed to in writing, software
--- distributed under the License is distributed on an "AS IS" BASIS,
--- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
--- See the License for the specific language governing permissions and
--- limitations under the License.
-
 local capabilities = require "st.capabilities"
 local ZigbeeDriver = require "st.zigbee"
 local zcl_messages = require "st.zigbee.zcl"
@@ -233,12 +218,19 @@ local function level_event_arrived(device, level)
   device:emit_event(capabilities.windowShadeLevel.shadeLevel(level))
   device:emit_event(capabilities.switchLevel.level(level))
   if support_dp1_state(device) and moving then
-    return
-  elseif does_report_start_pos(device) and moving then
-    device:set_field(MOVING, false)
-  else
-    device:emit_event(capabilities.windowShade.windowShade(window_shade_val))
-  end
+    return -- 특정 기기는 이 상태에서 이벤트를 발행하지 않음
+  end
+  
+  if does_report_start_pos(device) and moving then
+    -- MOVING을 해제했지만, 상태 이벤트는 아래에서 발행해야 함
+    device:set_field(MOVING, false)
+  end
+  
+  if not moving or not support_dp1_state(device) then
+    -- MOVING 상태가 아니거나, (움직임 종료 시점),
+    -- support_dp1_state를 사용하지 않는 경우에만 최종 상태 반영
+    device:emit_event(capabilities.windowShade.windowShade(window_shade_val))
+  end
 end
 
 local function set_event(device)
@@ -270,7 +262,12 @@ local function tuya_cluster_handler(driver, device, zb_rx)
       level_event_arrived(device, level_val(device, fncmd))
     end
   elseif dp == 3 then -- 0x03: Percent state -- Arrived at position
-    level_event_arrived(device, level_val(device, fncmd))
+    local arrived_level = level_val(device, fncmd)
+    if device:get_field(MOVING) or arrived_level == 0 or arrived_level == 100 then
+      -- 최종 위치 도착 또는 움직임 중이었을 때 MOVING 플래그 해제
+      device:set_field(MOVING, false)
+    end
+    level_event_arrived(device, arrived_level)
   elseif dp == 5 then -- 0x05: Direction state
     log.info("direction state of the motor is "..(fncmd and "reverse" or "forward"))
   elseif dp == 6 then -- 0x06: Arrived at destination (with fncmd==0)
