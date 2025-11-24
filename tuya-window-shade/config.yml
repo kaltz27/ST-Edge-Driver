@@ -1,4 +1,4 @@
-name: 'Tuya Window Shade'
-packageKey: 'tuya-window-shade'
+name: 'Aiden Window Shade'
+packageKey: 'aiden-window-shade'
 permissions:
   zigbee: {}
